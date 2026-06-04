@@ -123,8 +123,9 @@ socket.on("mqtt_alert", function(data) {
         statusText = "🚫 MAJ bloquée (5 essais)";
     }
 
+    const typeIcon = data.type === "centrale" ? "🏢" : "📡";
     item.innerHTML = `
-        ⚠️ <strong>${data.serial}</strong> (${data.type}) — v${data.version} à ${data.timestamp}
+        ${typeIcon} <strong>${data.serial}</strong> (${data.type}) — v${data.version} à ${data.timestamp}
         <span class="status-label ${statusClass}">${statusText}</span>
     `;
     list.prepend(item);
