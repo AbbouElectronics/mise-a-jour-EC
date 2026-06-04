@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mise à jour des équipements</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Mise à jour des équipements</h1>
+        <p class="subtitle">Choisissez une méthode de mise à jour</p>
+
+        <div class="button-grid">
+            <form action="/update/serial" method="get">
+                <button class="button" type="submit">🔧 Par numéro de série</button>
+            </form>
+
+            <form action="/update/batch" method="get">
+                <button class="button" type="submit">📦 Par lot de numéros</button>
+            </form>
+
+            <form action="/update/site" method="get">
+                <button class="button" type="submit">🏢 Par site</button>
+            </form>
+
+            <form action="/update/gestion" method="get">
+                <button class="button" type="submit">🏢 🏢 Par gestion</button>
+            </form>
+
+            <form action="/update/auto" method="get">
+                <button class="button" type="submit">⚙️ Automatique (MQTT)</button>
+            </form>
+            <!-- ✅ NOUVEAU BOUTON -->
+            <form action="/lecteur/info" method="get">
+                <button class="button" type="submit">ℹ️ Get info lecteur</button>
+            </form>
+
+        </div>
+    </div>
+</body>
+</html>

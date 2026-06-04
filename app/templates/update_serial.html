@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mise à jour par numéro de série</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Mise à jour par numéro de série</h1>
+        <form method="POST">
+            <label for="serial">Numéro de série :</label><br>
+            <input type="text" id="serial" name="serial" required><br><br>
+
+            <label for="target_version">Version cible :</label><br>
+            <input type="text" id="target_version" name="target_version" required><br><br>
+
+            <button type="submit" class="button">Lancer la mise à jour</button>
+        </form>
+
+        <br>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <br><a href="/update">⬅ Retour</a>
+    </div>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Écoute Automatique (MQTT)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f7f7f7;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h3 {
+            text-align: center;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+        }
+        ul#alert-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        ul#alert-list li {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-label {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+        .envoyee {
+            background: #d4edda;
+            color: #155724;
+        }
+        .non-envoyee {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        #alert-list {
+    list-style-type: none;
+    padding: 0;
+    max-height: 400px;  /* hauteur visible */
+    overflow-y: auto;   /* permet le scroll */
+    margin-top: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background-color: white;
+}
+.appliquee {
+    background: #cce5ff;
+    color: #004085;
+}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Mise à jour automatique (MQTT)</h1>
+    <!-- 🔁 Reconnecter lecteurs -->
+<div style="text-align:center; margin-top: 20px;">
+    <input type="number" id="lecteur-count" placeholder="Nombre de lecteurs à reconnecter" min="1" style="padding: 8px; width: 300px; border-radius: 6px; border: 1px solid #ccc;">
+    <button id="reconnect-btn" class="button" style="background-color: #28a745;">🔁 Reconnecter lecteurs</button>
+</div>
+    <button id="start-mqtt-btn" class="button">🟢 Lancer l'écoute automatique</button>
+
+    <h3>📋 Équipements connectés avec version trop basse :</h3>
+    <ul id="alert-list"></ul>
+    <button id="stop-mqtt-btn" class="button" style="background-color: #dc3545;">🔴 Arrêter l'écoute automatique</button>
+</div>
+
+
+<script>
+const socket = io();
+
+$('#start-mqtt-btn').on('click', function() {
+    fetch('/api/start-mqtt-listener', {
+        method: 'POST'
+    }).then(res => res.json()).then(data => {
+        alert("🛰️ Écoute MQTT lancée");
+    });
+});
+socket.on("mqtt_alert", function(data) {
+    const list = document.getElementById("alert-list");
+    const item = document.createElement("li");
+
+    let statusClass = "non-envoyee";
+    let statusText = "MAJ non envoyée";
+
+    if (data.mise_a_jour === true) {
+        statusClass = "envoyee";
+        statusText = "✅ MAJ envoyée";
+    } else if (data.mise_a_jour === "appliquée") {
+        statusClass = "appliquee";
+        statusText = "📥 MAJ appliquée";
+    } else if (data.mise_a_jour === "bloquée") {
+        statusClass = "bloquee";
+        statusText = "🚫 MAJ bloquée (5 essais)";
+    }
+
+    item.innerHTML = `
+        ⚠️ <strong>${data.serial}</strong> (${data.type}) — v${data.version} à ${data.timestamp}
+        <span class="status-label ${statusClass}">${statusText}</span>
+    `;
+    list.prepend(item);
+});
+
+// Bouton pour arrêter l'écoute
+$('#stop-mqtt-btn').on('click', function() {
+    fetch('/api/stop-mqtt-listener', {
+        method: 'POST'
+    }).then(res => res.json()).then(data => {
+        alert("🛑 Écoute MQTT arrêtée");
+    });
+});
+$('#reconnect-btn').on('click', function () {
+    const count = parseInt($('#lecteur-count').val());
+
+    if (isNaN(count) || count <= 0) {
+        alert("Veuillez entrer un nombre valide de lecteurs.");
+        return;
+    }
+
+    fetch('/api/reconnect-lecteurs_auto', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ nombre: count }) 
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert(data.message);
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert("Une erreur s'est produite.");
+    });
+});
+</script>
+</body>
+</html>

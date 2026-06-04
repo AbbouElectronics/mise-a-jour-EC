@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mise à jour par gestion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <style>
+        html, body {
+    height: auto;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+}
+        input, select {
+            width: 100%; padding: 10px; margin: 10px 0;
+            font-size: 14px; border-radius: 8px; border: 1px solid #ccc;
+        }
+        table {
+            width: 100%; border-collapse: collapse;
+            margin-top: 10px; margin-bottom: 20px;
+        }
+        th, td {
+            padding: 8px; border: 1px solid #ccc; vertical-align: middle;
+        }
+        .progress-container {
+            width: 100%; background-color: #e0e0e0; border-radius: 10px;
+            margin-top: 10px; margin-bottom: 20px;
+        }
+        .progress-bar {
+            height: 25px; width: 0%; background-color: #007bff;
+            border-radius: 10px; text-align: center; color: white;
+            font-weight: bold; transition: width 0.5s ease-in-out;
+        }
+        .equipment-type { font-weight: bold; }
+        tr.centrale-row { background-color: #f5faff; }
+        tr.lecteur-row { background-color: #fffaf5; }
+        .container {
+            max-width: 1200px; margin: 40px auto;
+            background-color: white; padding: 30px;
+            border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .filter-checkboxes { margin: 10px 0; text-align: center; }
+        .filter-checkboxes label { margin: 0 15px; }
+        .filter-section {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f7f9fc;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+}
+
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 10px;
+}
+
+.filter-row label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.version-label {
+    margin-right: 5px;
+    font-weight: bold;
+}
+
+#version-filter {
+    flex: 1;
+    max-width: 200px;
+}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Mise à jour des équipements par gestion</h1>
+
+    <form method="POST">
+        <label for="gestion">Sélectionner une ou plusieurs gestions :</label>
+        <select name="gestion" id="gestion" multiple="multiple" required>
+            {% for g in all_gestions %}
+                <option value="{{ g }}">{{ g }}</option>
+            {% endfor %}
+        </select>
+
+        <div class="filter-section">
+            <div class="filter-row">
+                <label><input type="checkbox" id="select-all"> Tout sélectionner</label>
+                <label><input type="checkbox" id="filter-centrales" checked> Centrales</label>
+                <label><input type="checkbox" id="filter-lecteurs" checked> Lecteurs</label>
+                <label><input type="checkbox" id="auto-test-checkbox"> Tester automatiquement la connexion</label>
+            </div>
+        
+            <div class="filter-row">
+                <label for="version-filter" class="version-label">Filtrer par version :</label>
+                <input type="text" id="version-filter" placeholder="Ex: 1.0.0">
+            </div>
+        </div>
+
+        <div id="gestion-preview">
+            <h3>Équipements associés :</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sélectionner</th>
+                        <th>Type</th>
+                        <th>Site</th>
+                        <th>Numéro de série</th>
+                        <th>Nom</th>
+                        <th>Version</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="centrales-list">
+                    <tr><td colspan="8">Veuillez sélectionner une ou plusieurs gestions.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <label for="target_version">Version cible :</label>
+        <input type="text" name="target_version" id="target_version" required>
+
+        <button type="submit" class="button" onclick="return verifySelectedEquipments()">Lancer la mise à jour</button>
+    </form>
+
+    {% if results %}
+        <h2>Résultats :</h2>
+        <ul>
+            {% for res in results %}
+                <li><strong>{{ res.serial }}</strong> — {{ res.message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    {% if serials %}
+        <h2>Suivi de progression</h2>
+        {% for serial in serials %}
+            <div>
+                <p><strong>{{ serial }}</strong> — <span id="progress-text-{{ serial }}">0%</span></p>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progress-bar-{{ serial }}">0%</div>
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <br><a href="/update">⬅ Retour</a>
+</div>
+
+<script>
+$(document).ready(function() {
+    $('#gestion').select2({ placeholder: "Choisir une ou plusieurs gestions", allowClear: true });
+
+    $('#gestion, #filter-centrales, #filter-lecteurs, #auto-test-checkbox').on('change', function () {
+        const selected = $('#gestion').val();
+        const showCentrales = $('#filter-centrales').is(':checked');
+        const showLecteurs = $('#filter-lecteurs').is(':checked');
+        const autoTest = $('#auto-test-checkbox').is(':checked');
+        const tableBody = document.getElementById("centrales-list");
+
+        tableBody.innerHTML = "";
+        if (!selected || selected.length === 0) {
+            tableBody.innerHTML = "<tr><td colspan='8'>Veuillez sélectionner une gestion.</td></tr>";
+            return;
+        }
+
+        fetch(`/api/gestion-centrales-multi?gestions=${selected.join(',')}`)
+            .then(response => response.json())
+            .then(data => {
+                tableBody.innerHTML = "";
+                if (data.length === 0) {
+                    tableBody.innerHTML = "<tr><td colspan='8'>Aucun équipement trouvé.</td></tr>";
+                } else {
+                    data.forEach(item => {
+                        if ((item.type === 'centrale' && showCentrales) || (item.type === 'lecteur' && showLecteurs)) {
+                            const icon = item.type === 'lecteur' ? '📶' : '📡';
+                            const tr = document.createElement("tr");
+                            tr.className = item.type === 'centrale' ? 'centrale-row' : 'lecteur-row';
+                            tr.innerHTML = `
+                                <td><input type="checkbox" name="selected_serials" value="${item.serial}" checked></td>
+                                <td class="equipment-type">${icon} ${item.type}</td>
+                                <td>${item.site || ""}</td>
+                                <td>${item.serial}</td>
+                                <td>${item.name || ""}</td>
+                                <td>${item.version || ""}</td>
+                                <td id="status-${item.serial}">⏳</td>
+                                <td>
+                                <button type="button" onclick="pingDevice('${item.serial}')">Tester connexion</button>
+                                ${item.type === 'lecteur' && item.centrale_serial ? `
+                                    <button type="button" onclick="reconnectLecteur('${item.serial}', '${item.centrale_serial}')">Reconnecter</button>
+                                    <button type="button" onclick="disconnectLecteur('${item.serial}', '${item.centrale_serial}')">Déconnecter</button>
+                                ` : ""}
+                            </td>
+                        `;
+                            tableBody.appendChild(tr);
+                        }
+                    });
+                    if (autoTest) testAllConnections();
+                }
+            })
+            .catch(err => {
+                tableBody.innerHTML = "<tr><td colspan='8'>Erreur lors du chargement.</td></tr>";
+                console.error("Erreur AJAX:", err);
+            });
+    });
+});
+
+function pingDevice(serial) {
+    const statusCell = document.getElementById(`status-${serial}`);
+    if (statusCell) statusCell.textContent = "⏳";
+    fetch(`/api/ping/${serial}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status.includes("✅")) statusCell.innerHTML = "<span style='color: green;'>✅</span>";
+            else statusCell.innerHTML = "<span style='color: red;'>❌</span>";
+        })
+        .catch(() => {
+            if (statusCell) statusCell.innerHTML = "<span style='color: gray;'>Erreur</span>";
+        });
+}
+
+function testAllConnections() {
+    document.querySelectorAll('input[name="selected_serials"]')
+        .forEach(cb => pingDevice(cb.value));
+}
+
+{% if serials %}
+const serials = JSON.parse('{{ serials | tojson | safe }}');
+const intervalIds = {}, progressStatus = {};
+
+function checkAllComplete() {
+    return serials.every(s => progressStatus[s] >= 100);
+}
+
+function updateProgress(serial) {
+    fetch(`/api/progress/${serial}`)
+        .then(res => res.json())
+        .then(data => {
+            const progress = parseInt(data.progress || 0);
+            const bar = document.getElementById(`progress-bar-${serial}`);
+            const text = document.getElementById(`progress-text-${serial}`);
+            bar.style.width = progress + '%';
+            bar.textContent = progress + '%';
+            text.textContent = progress + '%';
+            progressStatus[serial] = progress;
+
+            if (progress >= 100 && intervalIds[serial]) {
+                clearInterval(intervalIds[serial]);
+                intervalIds[serial] = null;
+            }
+
+            if (checkAllComplete() && !document.getElementById("success-msg")) {
+                const message = document.createElement('p');
+                message.id = "success-msg";
+                message.textContent = "✅ Mise à jour terminée avec succès.";
+                message.style.color = "green";
+                message.style.marginTop = "20px";
+                document.querySelector('.container').appendChild(message);
+                setTimeout(() => window.location.href = "/update/gestion", 5000);
+            }
+        })
+        .catch(err => console.error("Erreur progression " + serial, err));
+}
+
+window.onload = () => {
+    serials.forEach(s => {
+        progressStatus[s] = 0;
+        intervalIds[s] = setInterval(() => updateProgress(s), 2000);
+    });
+};
+{% endif %}
+
+function reconnectLecteur(lecteurSerial, centraleSerial) {
+    fetch("/api/reconnect-lecteur", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            lecteur_serial: lecteurSerial,
+            centrale_serial: centraleSerial
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert(`🔄 Reconnexion envoyée à ${lecteurSerial}`);
+        } else {
+            alert(`❌ Échec de la reconnexion : ${data.error}`);
+        }
+    })
+    .catch(err => {
+        alert("❌ Erreur réseau");
+        console.error(err);
+    });
+}
+function disconnectLecteur(lecteurSerial, centraleSerial) {
+    fetch("/api/disconnect-lecteur", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            lecteur_serial: lecteurSerial,
+            centrale_serial: centraleSerial
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert(`🔌 Déconnexion envoyée à ${lecteurSerial}`);
+        } else {
+            alert(`❌ Erreur déconnexion : ${data.error}`);
+        }
+    })
+    .catch(err => {
+        alert("❌ Erreur réseau");
+        console.error(err);
+    });
+}
+document.getElementById("select-all").addEventListener("change", function () {
+        const checkboxes = document.querySelectorAll("input[name='selected_serials']");
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    document.getElementById("version-filter").addEventListener("input", function () {
+    const version = this.value.trim();
+    const rows = document.querySelectorAll("#centrales-list tr");
+
+    rows.forEach(row => {
+        const versionCell = row.querySelector("td:nth-child(6)");
+        const checkbox = row.querySelector("input[type='checkbox']");
+        if (!versionCell || !checkbox) return;
+
+        const match = version === "" || versionCell.textContent.includes(version);
+        row.style.display = match ? "" : "none";
+        checkbox.checked = match;
+    });
+});
+
+
+   
+
+function verifySelectedEquipments() {
+    const visibleChecked = Array.from(document.querySelectorAll("#centrales-list tr"))
+        .filter(row => row.style.display !== "none")
+        .map(row => row.querySelector("input[type='checkbox']"))
+        .filter(cb => cb && cb.checked);
+
+    if (visibleChecked.length === 0) {
+        alert("Veuillez sélectionner au moins un équipement visible pour lancer la mise à jour.");
+        return false;
+    }
+    return true;
+}
+</script>
+</body>
+</html>

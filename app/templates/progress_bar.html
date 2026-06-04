@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Suivi de mise à jour</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .progress-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            height: 30px;
+            width: 0%;
+            background-color: #007bff;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            transition: width 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Suivi de la mise à jour</h1>
+        <p id="progress-text">Progression : 0%</p>
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar">0%</div>
+        </div>
+    </div>
+
+    <script>
+        let intervalId = null;
+    
+        function updateProgress() {
+            fetch('/api/progress')
+                .then(response => response.json())
+                .then(data => {
+                    const progress = parseInt(data.progress || 0);
+                    const bar = document.getElementById('progress-bar');
+                    const text = document.getElementById('progress-text');
+    
+                    bar.style.width = progress + '%';
+                    bar.textContent = progress + '%';
+                    text.textContent = 'Progression : ' + progress + '%';
+    
+                    if (progress >= 100 && intervalId !== null) {
+                        clearInterval(intervalId);
+                        intervalId = null;
+    
+                        const message = document.createElement('p');
+                        message.textContent = "✅ Mise à jour terminée avec succès.";
+                        message.style.color = "green";
+                        message.style.marginTop = "20px";
+                        document.querySelector('.container').appendChild(message);
+    
+                        // ⏳ Attendre 5 secondes puis rediriger
+                        setTimeout(() => {
+                            window.location.href = "/update/serial"; // ou "/update" selon ton besoin
+                        }, 5000);
+                    }
+                })
+                .catch(err => console.error("Erreur API :", err));
+        }
+    
+        window.onload = function () {
+            intervalId = setInterval(updateProgress, 2000);
+        };
+    </script>
+</body>
+</html>

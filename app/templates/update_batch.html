@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mise à jour par lot de numéros</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            font-size: 14px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            height: 25px;
+            width: 0%;
+            background-color: #007bff;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            transition: width 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mise à jour par lot de numéros</h1>
+
+        <form method="POST">
+            <label for="serials">Numéros de série (un par ligne) :</label><br>
+            <textarea name="serials" id="serials" required></textarea><br><br>
+
+            <label for="target_version">Version cible :</label><br>
+            <input type="text" name="target_version" required><br><br>
+
+            <button type="submit" class="button">Lancer la mise à jour</button>
+        </form>
+
+        {% if results %}
+            <h2>Résultats :</h2>
+            <ul>
+                {% for res in results %}
+                    <li><strong>{{ res.serial }}</strong> — {{ res.message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% if serials %}
+            <h2>Suivi de progression</h2>
+            {% for serial in serials %}
+                <div>
+                    <p><strong>{{ serial }}</strong> — <span id="progress-text-{{ serial }}">0%</span></p>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progress-bar-{{ serial }}">0%</div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <br><a href="/update">⬅ Retour</a>
+    </div>
+
+    <script>
+        {% if serials %}
+        const serials = JSON.parse('{{ serials | tojson | safe }}');
+        const intervalIds = {};
+        const progressStatus = {}; // ✅ bien défini en haut
+    
+        // ✅ d'abord cette fonction
+        function checkAllComplete() {
+            return serials.every(serial => progressStatus[serial] >= 100);
+        }
+    
+        function updateProgress(serial) {
+            fetch(`/api/progress/${serial}`)
+                .then(response => response.json())
+                .then(data => {
+                    const progress = parseInt(data.progress || 0);
+                    const bar = document.getElementById('progress-bar-' + serial);
+                    const text = document.getElementById('progress-text-' + serial);
+    
+                    bar.style.width = progress + '%';
+                    bar.textContent = progress + '%';
+                    text.textContent = progress + '%';
+    
+                    progressStatus[serial] = progress;
+    
+                    if (progress >= 100 && intervalIds[serial]) {
+                        clearInterval(intervalIds[serial]);
+                        intervalIds[serial] = null;
+                    }
+    
+                    if (checkAllComplete()) {
+                        if (!document.getElementById("success-msg")) {
+                            const message = document.createElement('p');
+                            message.id = "success-msg";
+                            message.textContent = "✅ Mise à jour terminée avec succès.";
+                            message.style.color = "green";
+                            message.style.marginTop = "20px";
+                            document.querySelector('.container').appendChild(message);
+    
+                            setTimeout(() => {
+                                window.location.href = "/update";
+                            }, 5000);
+                        }
+                    }
+                })
+                .catch(err => console.error("Erreur progression " + serial, err));
+        }
+    
+        window.onload = function () {
+            serials.forEach(serial => {
+                progressStatus[serial] = 0;
+                intervalIds[serial] = setInterval(() => updateProgress(serial), 2000);
+            });
+        };
+        {% endif %}
+    </script>
+    <script>
+        console.log("serials =", {{ serials | tojson }});
+    </script>
+</body>
+</html>

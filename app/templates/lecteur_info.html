@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Informations lecteur</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        html, body { scroll-behavior: smooth; }
+
+        .page-card {
+            max-width: 1100px;
+            margin: 40px auto;
+            padding: 35px 45px;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 0 18px rgba(0,0,0,0.08);
+        }
+
+        h1 { text-align: center; font-size: 34px; margin-bottom: 10px; }
+
+        .subtitle {
+            text-align: center;
+            font-size: 20px;
+            margin-bottom: 35px;
+            color: #444;
+        }
+
+        .form-section {
+            background: #f8f9fb;
+            border: 1px solid #d5d5d5;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 35px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .field label {
+            display: block;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .field input {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 18px;
+            box-sizing: border-box;
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 25px;
+        }
+
+        .button {
+            width: 100%;
+            padding: 15px;
+            font-size: 19px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .result-title {
+            text-align: center;
+            font-size: 26px;
+            margin: 30px 0 20px;
+        }
+
+        .result-box {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            background: #fafafa;
+            padding: 25px;
+            min-height: 120px;
+            max-height: 650px;
+            font-size: 18px;
+            white-space: pre-wrap;
+            font-family: Consolas, monospace;
+            overflow: auto;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 18px;
+        }
+
+        .info-table th,
+        .info-table td {
+            border: 1px solid #ccc;
+            padding: 14px;
+            text-align: left;
+        }
+
+        .info-table th { background: #f1f3f5; }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 15px;
+            color: #007bff;
+            text-decoration: none;
+            font-size: 17px;
+        }
+
+        .scroll-top-btn {
+            position: fixed;
+            right: 25px;
+            bottom: 25px;
+            z-index: 9999;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 14px 22px;
+            font-size: 18px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+        }
+
+        @media (max-width: 900px) {
+            .form-row,
+            .actions { grid-template-columns: 1fr; }
+
+            .page-card {
+                margin: 20px;
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+
+<body id="top-page">
+
+<div class="page-card">
+
+    <a href="/" class="back-link">⬅ Retour au menu</a>
+
+    <h1>Informations lecteur</h1>
+    <p class="subtitle">Reconnecter le lecteur puis récupérer ses informations MQTT</p>
+
+    <div class="form-section">
+        <div class="form-row">
+            <div class="field">
+                <label>Numéro de série centrale :</label>
+                <input type="text" id="centrale_serial" placeholder="Ex : 1101-2532000848">
+            </div>
+
+            <div class="field">
+                <label>Numéro de série lecteur :</label>
+                <input type="text" id="lecteur_serial" placeholder="Ex : 22465200002400002b00002625001538">
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="button" onclick="reconnecterLecteur()">🔄 Reconnecter lecteur</button>
+            <button class="button" onclick="getInfosLecteur()">ℹ️ Récupérer infos lecteur</button>
+            <button class="button" onclick="getInfosTousLecteurs()">📊 Excel : tous les lecteurs</button>
+        </div>
+    </div>
+
+    <h2 class="result-title" id="result-title">Résultat</h2>
+
+    <div id="resultat" class="result-box">
+        En attente d’une action...
+    </div>
+
+</div>
+
+<button type="button" class="scroll-top-btn" onclick="retourEnHaut()">⬆ Haut</button>
+
+<script>
+window.lastResults = [];
+
+function retourEnHaut() {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    document.querySelectorAll("*").forEach(el => {
+        if (el.scrollTop > 0) {
+            el.scrollTop = 0;
+        }
+    });
+}
+
+function reconnecterLecteur() {
+    const centrale = document.getElementById("centrale_serial").value.trim();
+    const lecteur = document.getElementById("lecteur_serial").value.trim();
+    const resultat = document.getElementById("resultat");
+
+    if (!centrale || !lecteur) {
+        resultat.innerHTML = "❌ Veuillez saisir le numéro de série centrale et le numéro de série lecteur.";
+        return;
+    }
+
+    resultat.innerHTML = "⏳ Reconnexion du lecteur en cours...";
+
+    fetch("/api/reconnect-lecteur", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            centrale_serial: centrale,
+            lecteur_serial: lecteur
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        resultat.innerHTML = data.success
+            ? "✅ Lecteur reconnecté avec succès."
+            : "❌ Erreur : " + data.error;
+    })
+    .catch(error => {
+        resultat.innerHTML = "❌ Erreur réseau : " + error;
+    });
+}
+
+function getInfosLecteur() {
+    const lecteur = document.getElementById("lecteur_serial").value.trim();
+    const resultat = document.getElementById("resultat");
+
+    if (!lecteur) {
+        resultat.innerHTML = "❌ Veuillez saisir le numéro de série lecteur.";
+        return;
+    }
+
+    resultat.innerHTML = "⏳ Récupération des informations lecteur...";
+
+    fetch("/api/lecteur/info", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ lecteur_serial: lecteur })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            afficherInfos(data.infos);
+        } else {
+            resultat.innerHTML = "❌ Erreur : " + data.error;
+        }
+    })
+    .catch(error => {
+        resultat.innerHTML = "❌ Erreur réseau : " + error;
+    });
+}
+
+function getInfosTousLecteurs() {
+    const resultat = document.getElementById("resultat");
+
+    window.lastResults = [];
+    retourEnHaut();
+
+    resultat.innerHTML = `
+        ⏳ Lecture du fichier Excel / CSV...<br>
+        🔄 Reconnexion de tous les lecteurs...<br>
+        ⏳ Attente 1 minute avant récupération des informations...<br>
+        📡 Récupération de v2mv_cs et v2mv_ver...
+    `;
+
+    fetch("/api/lecteurs/info-excel", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"}
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            afficherInfosExcel(data.results);
+        } else {
+            resultat.innerHTML = "❌ Erreur : " + data.error;
+        }
+    })
+    .catch(error => {
+        resultat.innerHTML = "❌ Erreur réseau : " + error;
+    });
+}
+
+function afficherInfos(infos) {
+    const resultat = document.getElementById("resultat");
+
+    let html = `
+        <table class="info-table">
+            <tr>
+                <th>Paramètre</th>
+                <th>Valeur</th>
+                <th>Topic reçu</th>
+            </tr>
+    `;
+
+    infos.forEach(item => {
+        html += `
+            <tr>
+                <td>${item.param || ""}</td>
+                <td>${item.value || ""}</td>
+                <td>${item.topic || ""}</td>
+            </tr>
+        `;
+    });
+
+    html += "</table>";
+    resultat.innerHTML = html;
+}
+
+function afficherInfosExcel(results) {
+    window.lastResults = results;
+
+    const resultat = document.getElementById("resultat");
+
+    let html = `
+        <button class="button" onclick="exporterCSV()" style="margin-bottom:20px;">
+            📥 Exporter résultats
+        </button>
+
+        <table class="info-table">
+            <tr>
+                <th>Centrale</th>
+                <th>Lecteur</th>
+                <th>v2mv_cs</th>
+                <th>v2mv_ver</th>
+                <th>Statut</th>
+            </tr>
+    `;
+
+    results.forEach(item => {
+        html += `
+            <tr>
+                <td>${item.centrale_serial || ""}</td>
+                <td>${item.lecteur_serial || ""}</td>
+                <td>${item.v2mv_cs || ""}</td>
+                <td>${item.v2mv_ver || ""}</td>
+                <td>${item.status || ""}</td>
+            </tr>
+        `;
+    });
+
+    html += "</table>";
+    resultat.innerHTML = html;
+
+    setTimeout(retourEnHaut, 500);
+}
+
+function exporterCSV() {
+    if (!window.lastResults || window.lastResults.length === 0) {
+        alert("❌ Aucun résultat à exporter");
+        return;
+    }
+
+    let csv = "\uFEFFCentrale;Lecteur;v2mv_cs;v2mv_ver;Statut\n";
+
+    window.lastResults.forEach(item => {
+        const centrale = item.centrale_serial || "";
+        const lecteur = item.lecteur_serial || "";
+        const cs = item.v2mv_cs || "";
+        const ver = item.v2mv_ver || "";
+        const status = item.status || "";
+
+        csv += `"${centrale}";"${lecteur}";"${cs}";"${ver}";"${status}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "resultats_lecteurs.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,6 @@
+flask
+flask-socketio
+python-dotenv
+paho-mqtt
+openpyxl
+mysql-connector-python
