@@ -494,6 +494,14 @@ def start_mqtt_watch():
             else:
                 print(f"[AUTO] {serial} déjà à jour ({payload}), aucune action")
 
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            client.subscribe("+/+/connected", qos=1)
+            client.subscribe("+/+/fw_version", qos=1)
+            print("[AUTO] Connecté au broker MQTT — écoute active")
+        else:
+            print(f"[AUTO] Erreur connexion broker MQTT : rc={rc}")
+
     client = mqtt.Client()
     client.username_pw_set(username, password)
     context = ssl.create_default_context()
@@ -503,11 +511,9 @@ def start_mqtt_watch():
     client.tls_set_context(context)
     client.tls_insecure_set(False)
 
+    client.on_connect = on_connect
     client.on_message = on_message
     client.connect(broker, port)
-    # Souscrit uniquement aux topics génériques — pas de bulk subscriptions
-    client.subscribe("+/+/connected", qos=1)
-    client.subscribe("+/+/fw_version", qos=1)
 
     mqtt_client_ref = client
     client.loop_forever()
