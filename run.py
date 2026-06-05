@@ -443,43 +443,14 @@ def parse_version(v):
 def start_mqtt_watch():
     global mqtt_client_ref
 
-    from app.mqtt_client import read_centrales_lecteurs_csv
-
-    # Charge le mapping centrale → lecteurs depuis le CSV
-    centrale_to_lecteurs = {}
-    try:
-        pairs = read_centrales_lecteurs_csv("centrales_lecteurs.csv")
-        for p in pairs:
-            c, l = p["centrale_serial"], p["lecteur_serial"]
-            centrale_to_lecteurs.setdefault(c, []).append(l)
-        print(f"[AUTO] CSV chargé : {len(pairs)} paires centrale/lecteur")
-    except Exception as e:
-        print(f"[AUTO] Erreur chargement CSV : {e}")
-
-    # Ensemble des serials en attente de fw_version
+    # Serials en attente de fw_version
     pending = set()
 
-    def reconnect_lecteurs_for_centrale(mqtt_client, centrale_serial):
-        """Reconnecte les lecteurs d'une centrale et demande leur version."""
-        lecteurs = centrale_to_lecteurs.get(centrale_serial, [])
-        if not lecteurs:
-            return
-        time.sleep(5)
-        print(f"[AUTO] Reconnexion lecteurs de centrale {centrale_serial}")
-        publish_connect_pcal_message(centrale_serial)
-        for l in lecteurs:
-            pending.add(l)
-        time.sleep(20)
-        for l in lecteurs:
-            if l in pending:
-                print(f"[AUTO] Demande fw_version lecteur {l}")
-                mqtt_client.publish(f"{l}/system", "status_refresh", qos=0)
-
-    def emit_alert(serial, category, payload, mise_a_jour):
+    def emit_alert(serial, category, version, mise_a_jour):
         socketio.emit("mqtt_alert", {
             "serial": serial,
             "type": category,
-            "version": payload,
+            "version": version,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "mise_a_jour": mise_a_jour
         })
@@ -489,47 +460,37 @@ def start_mqtt_watch():
         payload = msg.payload.decode().strip()
         serial = extract_serial(topic)
         category = get_type_from_serial(serial)
-        # Version cible : on met à jour uniquement si version < cible
         target_version = "1.3.8" if category == "centrale" else "1.4.10"
 
         if topic.endswith("connected") and payload == "1":
+            # Appareil connecté → on demande sa version
             pending.add(serial)
             client.publish(f"{serial}/system", "status_refresh", qos=0)
             print(f"[AUTO] Connexion détectée : {serial} ({category})")
 
-            # Si c'est une centrale, reconnecte ses lecteurs en arrière-plan
-            if category == "centrale" and serial in centrale_to_lecteurs:
-                threading.Thread(
-                    target=reconnect_lecteurs_for_centrale,
-                    args=(client, serial),
-                    daemon=True
-                ).start()
-
         elif topic.endswith("fw_version"):
+            # Lecteur qui répond après reconnexion manuelle (bouton)
+            # même sans connected=1 capté, on traite
+            if serial not in pending and category == "lecteur":
+                pending.add(serial)
+
             if serial not in pending:
-                # Lecteur non marqué pending mais fw_version reçu : on traite quand même
-                if category == "lecteur":
-                    pending.add(serial)
-                else:
-                    return
+                return
 
             pending.discard(serial)
-            print(f"[AUTO] fw_version reçu : {serial} ({category}) = {payload}")
+            print(f"[AUTO] fw_version : {serial} ({category}) = {payload}")
 
-            # Comparaison correcte par numéro de version (pas en texte)
             if parse_version(payload) < parse_version(target_version):
                 if can_retry_update(serial):
                     publish_update_message(serial, target_version)
                     save_update(serial, category, payload, True)
                     emit_alert(serial, category, payload, True)
-                    print(f"[AUTO] Mise à jour envoyée : {serial} → {target_version}")
+                    print(f"[AUTO] MAJ envoyée : {serial} → {target_version}")
                 else:
                     emit_alert(serial, category, payload, "bloquée")
-                    print(f"[AUTO] Mise à jour bloquée (5 essais max) : {serial}")
             elif parse_version(payload) == parse_version(target_version) and update_exists(serial):
                 mark_update_applied(serial)
                 emit_alert(serial, category, payload, "appliquée")
-                print(f"[AUTO] Mise à jour confirmée appliquée : {serial}")
             else:
                 print(f"[AUTO] {serial} déjà à jour ({payload}), aucune action")
 
@@ -544,14 +505,12 @@ def start_mqtt_watch():
 
     client.on_message = on_message
     client.connect(broker, port)
+    # Souscrit uniquement aux topics génériques — pas de bulk subscriptions
     client.subscribe("+/+/connected", qos=1)
     client.subscribe("+/+/fw_version", qos=1)
 
-    # Souscrit directement aux topics lecteurs connus pour ne rien rater
-    for lecteur_list in centrale_to_lecteurs.values():
-        for lecteur_serial in lecteur_list:
-            client.subscribe(f"+/{lecteur_serial}/fw_version", qos=1)
-            client.subscribe(f"+/{lecteur_serial}/connected", qos=1)
+    mqtt_client_ref = client
+    client.loop_forever()
 
     mqtt_client_ref = client
     client.loop_forever()
